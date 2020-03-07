@@ -38,6 +38,8 @@ COC = 1
 CL1500 = 2
 DES1500 = 3
 
+nA = 3
+
 ḣRanges = Dict(COC=>(-100.0,100.0),
                 CL1500=>(-100.0,25.0),
                 DES1500=>(-25.0,100.0))
@@ -49,6 +51,10 @@ T_τ_init = zeros(length(τs), length(τs))
 T_τ_init[1,1] = 1.0
 for i = 2:length(τs)
 	T_τ_init[i,i-1] = 1
+end
+
+function vMDP(;grid=RectangleGrid(hs, ḣ₀s, ḣ₁s), nS=nS, nA=nA, γ=0.99, ḣRanges=ḣRanges, T_τ=T_τ_init)
+	return vMDP(grid, nS, nA, γ, ḣRanges, T_τ)
 end
 
 """
@@ -64,10 +70,10 @@ function transition(mdp::vMDP, s_ind::Int64, a::Int64)
 end
 
 function next_state_vals(mdp::vMDP, s_ind::Int64, a::Int64)
-	s_grid = ind2x(mdp.grid, s)
+	s_grid = ind2x(mdp.grid, s_ind)
 	h, ḣ₀, ḣ₁ = s_grid[1], s_grid[2], s_grid[3]
-	ḧ₀ = get_accel(a, ḣ₀)
-	ḧ₁ = get_accel(a, ḣ₁)
+	ḧ₀ = get_accel(mdp, a, ḣ₀)
+	ḧ₁ = get_accel(mdp, a, ḣ₁)
 
 	hnext = h - ḣ₀ - 0.5ḧ₀ + ḣ₁ + 0.5ḧ₁
 	ḣ₀next = ḣ₀ + ḧ₀
@@ -75,16 +81,17 @@ function next_state_vals(mdp::vMDP, s_ind::Int64, a::Int64)
 	return hnext, ḣ₀next, ḣ₁next
 end
 
-function get_accel(a::Int64, ḣ::Float64)
+function get_accel(mdp::vMDP, a::Int64, ḣ::Float64)
 	ḣLow, ḣHigh = mdp.ḣRanges[a]
 	ḧ = nominal_vertical_accel
-    if (ḣLow >= ḣ) .| (vHigh <= ḣ)
+    if (ḣLow >= ḣ) .| (ḣHigh <= ḣ)
         ḧ = 0
     elseif ḣLow > ḣ + ḧ
         ḧ = ḣLow-ḣ
     elseif ḣHigh < ḣ + ḧ
         ḧ = ḣHigh-ḣ
     end
+    return ḧ
 end
 
 """
@@ -94,14 +101,14 @@ Rewards
 """
 
 function reward(mdp::vMDP, s_ind::Int64, τ_ind::Int64, a::Int64)
-	s_grid = ind2x(mdp.grid, s)
+	s_grid = ind2x(mdp.grid, s_ind)
 	h, ḣ₀, ḣ₁, τ = s_grid[1], s_grid[2], s_grid[3], τs[τ_ind]
 
 	r = 0
 	# Penalize nmac
 	abs(h) < 100 && τ ≤ 1 ? r -= 1 : nothing
 	#Penalize alerting
-	a != COC ? r -= 0.05
+	a != COC ? r -= 0.05 : nothing
 
 	return r
 end
