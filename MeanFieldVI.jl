@@ -1,12 +1,12 @@
 using SparseArrays
 
-function vanilla_VI(mdp; tol=0.001, max_iter=200, print_every=1)
+function vanilla_VI(mdp; tol=0.01, max_iter=2000, print_every=1, init_Q=[])
 	nS, nA = mdp.nS, mdp.nA
 	γ = mdp.γ
 	println("building matrices...")
 	T, R = build_matrices(mdp)
 	println("Done!")
-	Q = zeros(nS, nA)
+	Q = length(init_Q) > 0 ? init_Q : zeros(nS, nA)
 	Q_rc = Dict()
 	U = zeros(nS)
 
@@ -57,9 +57,9 @@ function T_R_action(mdp, a)
 		end
 	end
 
-	rval = zeros(Int32,nS*100)
-    cval = zeros(Int32,nS*100)
-    zval = zeros(Float32,nS*100)
+	rval = zeros(Int32, mdp.nS*100)
+    cval = zeros(Int32, mdp.nS*100)
+    zval = zeros(Float32, mdp.nS*100)
     index = 1
 
 	for i = 1:nS_sub
@@ -84,9 +84,6 @@ function bellman_update(mdp, R, T, U)
 	nS_sub = convert(Int64, nS/nτ)
 
 	Qa = R
-	# for i in 1:nτ
-	# 	Qa[(i-1)*nS_sub+1:i*nS_sub] += γ*sum(T_τ[:,i])*T*U[(i-1)*nS_sub+1:i*nS_sub]
-	# end
 	for i = 1:nτ
 		r_newτ = γ*T*U[(i-1)*nS_sub+1:i*nS_sub]
 		for j = 1:nτ

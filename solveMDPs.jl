@@ -2,4 +2,4 @@
 @everywhere include("MeanFieldVI.jl")
 
 vmdp = vMDP()
-Q = vanilla_VI(vmdp, max_iter=200)
+Q = vanilla_VI(vmdp, max_iter=2000)
