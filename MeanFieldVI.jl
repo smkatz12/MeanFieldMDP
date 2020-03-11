@@ -1,6 +1,10 @@
-using SparseArrays
+"""
+----------------------------------
+Value Iteration Algorithms
+----------------------------------
+"""
 
-function vanilla_VI(mdp; tol=0.01, max_iter=2000, print_every=1, init_Q=[])
+function vanilla_VI(mdp; tol=0.001, max_iter=2000, print_every=1, init_Q=[])
 	nS, nA = mdp.nS, mdp.nA
 	γ = mdp.γ
 	println("building matrices...")
@@ -29,6 +33,12 @@ function vanilla_VI(mdp; tol=0.01, max_iter=2000, print_every=1, init_Q=[])
 
 	return Q
 end
+
+"""
+----------------------------------
+Helper functions
+----------------------------------
+"""
 
 function build_matrices(mdp)
 	nS, nA = mdp.nS, mdp.nA
@@ -91,4 +101,82 @@ function bellman_update(mdp, R, T, U)
 		end
 	end
 	return Qa
+end
+
+"""
+----------------------------------
+Mean Field Approximation
+----------------------------------
+"""
+# This could possibly be vectorized better
+function update_T_τ!(hmdp::hMDP, T, s_τv, Qv)
+	nS = size(Qv, 1)
+	nτ = size(mdp.T_τ, 1)
+	nS_sub = convert(Int64, nS/nτ)
+	τs = collect(range(0, step=1, length=nτ))
+
+	T_τ = zeros(nτ, nτ)
+
+	# Printing
+	fracBase = 0.2
+    frac = fracBase
+
+	for τ⁰ in τs
+		τ⁰ind = τ⁰ + 1
+		# Compute denominator
+		den = sum(s_τ[:, τ⁰ind])
+		for τ¹ in τs
+			τ⁰ind = τ⁰ + 1
+			outer_sum = 0
+			for s⁰ in 1:nS_sub
+				s_ind = nS_sub*τ⁰ + s⁰
+				action = argmax(Qv[s_ind, :])
+				inner_sum = 0
+				for s¹ in 1:nS_sub
+					inner_sum += s_τ[s¹, τ¹ind]*T[action][s⁰, s¹]
+				end
+				outer_sum += s_τ[s⁰, τ⁰ind]*inner_sum
+			end
+			T_τ[τ⁰ind, τ¹ind] = outer_sum/den
+		end
+
+		if τ⁰ind/nτ > frac
+			print(round(frac*100))
+            println("% Complete")
+            frac += fracBase
+        end
+	end
+	return T_τ
+end
+
+function compute_s_τ(mdp::vMDP, nτh)
+	nS = mdp.nS
+	nτ = size(mdp.T_τ, 1)
+	nS_sub = convert(Int64, nS/nτ)
+	s_τ = spzeros(nS_sub, nτh)
+	for i = 1:nS_sub
+		τ = vertical_τ(mdp, i)
+		# These next few lines just do 1D interpolation
+		if (τ < 0) || (τ > nτh - 1)
+			s_τ[i, nτh] = 1.0
+		else
+			floorτ = floor(τ)
+			lower_ind = convert(Int64, floorτ) + 1
+			s_τ[i, lower_ind] = τ - floorτ
+			s_τ[i, lower_ind+1] = 1 - (τ - floorτ)
+		end
+	end
+	return s_τ
+end
+
+function vertical_τ(mdp::vMDP, s_ind)
+	s_grid = ind2x(mdp.grid, s_ind)
+	h, ḣ₀, ḣ₁ = s_grid[1], s_grid[2], s_grid[3]
+	τ = 0
+	if ḣ₀ - ḣ₁ == 0
+		τ = h == 0 ? 0 : -1
+	else
+		τ = h/(ḣ₀ - ḣ₁)
+	end
+	return τ
 end

@@ -1,7 +1,3 @@
-using GridInterpolations
-using POMDPModelTools
-using StaticArrays
-
 # Define the general mdp
 struct vMDP
 	grid::RectangleGrid
@@ -31,9 +27,9 @@ ḣ₀s = vcat(LinRange(-100,-60,3),LinRange(-50,-35,3),
 ḣ₁s = vcat(LinRange(-100,-60,3),LinRange(-50,-35,3),
 	LinRange(-30,30,10),LinRange(35,50,3),
 	LinRange(60,100,3)) #ft/s
-vτs = collect(range(0, step=1, stop=40)) # s
+hτs = collect(range(0, step=1, stop=40)) # s
 
-nSv = length(hs)*length(ḣ₀s)*length(ḣ₁s)*length(vτs)
+nSv = length(hs)*length(ḣ₀s)*length(ḣ₁s)*length(hτs)
 
 # Actions
 COC = 1
@@ -55,13 +51,13 @@ accels = Dict(COC=>([0.5,0.25,0.25], [0.0,3.0,-3.0]),
 nominal_vertical_accel = 10 # ft/s²
 
 # τ stuff
-T_vτ_init = zeros(length(vτs), length(vτs))
-T_vτ_init[1,1] = 1.0
-for i = 2:length(vτs)
-	T_τ_init[i,i-1] = 1
+T_hτ_init = zeros(length(hτs), length(hτs))
+T_hτ_init[1,1] = 1.0
+for i = 2:length(hτs)
+	T_hτ_init[i,i-1] = 1
 end
 
-function vMDP(;grid=RectangleGrid(hs, ḣ₀s, ḣ₁s), nS=nSv, nA=nAv, γ=0.99, ḣRanges=ḣRanges, accels=accels, T_τ=T_vτ_init)
+function vMDP(;grid=RectangleGrid(hs, ḣ₀s, ḣ₁s), nS=nSv, nA=nAv, γ=0.99, ḣRanges=ḣRanges, accels=accels, T_τ=T_hτ_init)
 	return vMDP(grid, nS, nA, γ, ḣRanges, accels, T_τ)
 end
 
@@ -133,12 +129,12 @@ Rewards
 
 function reward(mdp::vMDP, s_ind::Int64, τ_ind::Int64, a::Int64)
 	s_grid = ind2x(mdp.grid, s_ind)
-	h, ḣ₀, ḣ₁, τ = s_grid[1], s_grid[2], s_grid[3], vτs[τ_ind]
+	h, ḣ₀, ḣ₁, τ = s_grid[1], s_grid[2], s_grid[3], hτs[τ_ind]
 
 	r = 0
 	# Penalize nmac
 	abs(h) < 100 && τ ≤ 1 ? r -= 1 : nothing
-	#Penalize alerting
+	# Penalize alerting
 	a != COC ? r -= 0.01 : nothing
 
 	return r
