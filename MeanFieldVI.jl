@@ -82,7 +82,7 @@ function T_R_action(mdp, a)
         end
     end
 
-    T = sparse(rval[1:index-1],cval[1:index-1],zval[1:index-1],nS_sub,nS_sub)
+    T = sparse(rval[1:index-1], cval[1:index-1], zval[1:index-1], nS_sub, nS_sub)
     return (T, R)
 end
 
@@ -108,57 +108,95 @@ end
 Mean Field Approximation
 ----------------------------------
 """
-# This could possibly be vectorized better
-function update_T_τ!(hmdp::hMDP, T, s_τv, Qv)
-	nS = size(Qv, 1)
-	nτ = size(mdp.T_τ, 1)
-	nS_sub = convert(Int64, nS/nτ)
-	τs = collect(range(0, step=1, length=nτ))
+# # This could possibly be vectorized better
+# function update_T_τ!(hmdp::hMDP, vmdp::vMDP, T, s_τ, Q)
+# 	nS = size(Q, 1)
+# 	nτh = size(vmdp.T_τ, 1)
+# 	nτv = size(hmdp.T_τ, 1)
+# 	nS_sub = convert(Int64, nS/nτh)
+# 	τs = collect(range(0, step=1, length=nτv))
 
-	T_τ = zeros(nτ, nτ)
+# 	T_τ = zeros(nτv, nτv)
 
-	# Printing
-	fracBase = 0.2
-    frac = fracBase
+# 	# Printing
+# 	fracBase = 0.1
+#     frac = fracBase
+
+# 	for τ⁰ in τs
+# 		τ⁰ind = τ⁰ + 1
+# 		# Compute denominator
+# 		den = sum(s_τ[:, τ⁰ind])
+# 		# Get T for specific policy
+# 	    println("Getting T_pol...")
+# 	    T_pol = get_T_policy(T, Q[τ⁰*nS_sub+1:(τ⁰+1)*nS_sub,:])
+# 	    println("Done!")
+# 		for τ¹ in τs
+# 			τ¹ind = τ¹ + 1
+# 			# outer_sum = 0
+# 			# for s⁰ in 1:nS_sub
+# 			# 	s_ind = nS_sub*τ⁰ + s⁰
+# 			# 	action = argmax(Q[s_ind, :])
+# 			# 	inner_sum = 0
+# 			# 	for s¹ in 1:nS_sub
+# 			# 		inner_sum += s_τ[s¹, τ¹ind]*T[action][s⁰, s¹]
+# 			# 	end
+# 			# 	outer_sum += s_τ[s⁰, τ⁰ind]*inner_sum
+# 			# end
+# 			# T_τ[τ⁰ind, τ¹ind] = outer_sum/den
+# 			inner_sum = T_pol*s_τ[:, τ¹ind]
+# 			outer_sum = sum(s_τ[:, τ⁰ind].*inner_sum)
+# 			T_τ[τ⁰ind, τ¹ind] = outer_sum/den
+# 		end
+
+# 		if τ⁰ind/nτv > frac
+# 			print(round(frac*100))
+#             println("% Complete")
+#             frac += fracBase
+#         end
+# 	end
+# 	return T_τ
+# end
+
+function update_T_τ!(hmdp::hMDP, vmdp::vMDP, T, s_τ, Q)
+	nS = size(Q, 1)
+	nτh = size(vmdp.T_τ, 1)
+	nτv = size(hmdp.T_τ, 1)
+	nS_sub = convert(Int64, nS/nτh)
+	τs = collect(range(0, step=1, length=nτv))
+
+	s_τ_all = repeat(s_τ, nτh) #./nτh
+	T_τ = zeros(nτv, nτv)
+
+	println("Getting policy transition matrix...")
+	T_pol = get_T_policy(vmdp, Q)
+	println("Done!")
 
 	for τ⁰ in τs
 		τ⁰ind = τ⁰ + 1
-		# Compute denominator
-		den = sum(s_τ[:, τ⁰ind])
+		den = sum(s_τ_all[:, τ⁰ind])
 		for τ¹ in τs
-			τ⁰ind = τ⁰ + 1
-			outer_sum = 0
-			for s⁰ in 1:nS_sub
-				s_ind = nS_sub*τ⁰ + s⁰
-				action = argmax(Qv[s_ind, :])
-				inner_sum = 0
-				for s¹ in 1:nS_sub
-					inner_sum += s_τ[s¹, τ¹ind]*T[action][s⁰, s¹]
-				end
-				outer_sum += s_τ[s⁰, τ⁰ind]*inner_sum
-			end
+			τ¹ind = τ¹ + 1
+
+			# Actual computation
+			inner_sum = T_pol*s_τ_all[:, τ¹ind]
+			outer_sum = sum(s_τ_all[:, τ⁰ind].*inner_sum)
+
 			T_τ[τ⁰ind, τ¹ind] = outer_sum/den
 		end
-
-		if τ⁰ind/nτ > frac
-			print(round(frac*100))
-            println("% Complete")
-            frac += fracBase
-        end
 	end
 	return T_τ
 end
 
-function compute_s_τ(mdp::vMDP, nτh)
+function compute_s_τ(mdp::vMDP, nτv)
 	nS = mdp.nS
 	nτ = size(mdp.T_τ, 1)
 	nS_sub = convert(Int64, nS/nτ)
-	s_τ = spzeros(nS_sub, nτh)
+	s_τ = spzeros(nS_sub, nτv)
 	for i = 1:nS_sub
 		τ = vertical_τ(mdp, i)
 		# These next few lines just do 1D interpolation
-		if (τ < 0) || (τ > nτh - 1)
-			s_τ[i, nτh] = 1.0
+		if (τ < 0) || (τ ≥ nτv - 1)
+			s_τ[i, nτv] = 1.0
 		else
 			floorτ = floor(τ)
 			lower_ind = convert(Int64, floorτ) + 1
@@ -180,3 +218,82 @@ function vertical_τ(mdp::vMDP, s_ind)
 	end
 	return τ
 end
+
+function get_T_policy(mdp, Q)
+	nS, nA = mdp.nS, mdp.nA
+	T_τ = mdp.T_τ
+	nτ = size(T_τ, 1)
+	nS_sub = convert(Int64, nS/nτ)
+
+	rval = zeros(Int32, mdp.nS*100)
+    cval = zeros(Int32, mdp.nS*100)
+    zval = zeros(Float32, mdp.nS*100)
+    index = 1
+
+    for i = 1:nS_sub
+		for j = 1:nτ
+			sps, probs = transition(mdp, i, argmax(Q[(j-1)*nS_sub + i, :]))
+			inds = findall(T_τ[j,:] .!= 0)
+			for ind in inds
+				for (spi, probi) in zip(sps,probs)
+		            rval[index] = (j-1)*nS_sub + i
+		            cval[index] = (ind-1)*nS_sub + spi
+		            zval[index] = probi*T_τ[j, ind]
+		            index += 1
+		        end
+		    end
+	    end
+    end
+
+    return sparse(rval[1:index-1], cval[1:index-1], zval[1:index-1], nS, nS)
+end
+
+
+
+# function get_T_policy(T, Q)
+# 	nS_sub = size(T[1], 1)
+# 	nS = size(Q, 1)
+# 	nτ = convert(Int64, nS/nS_sub)
+# 	nA = size(Q,2)
+# 	T_tot = Dict()
+# 	for i = 1:nA
+# 		T_tot[i] = repeat(T[i], nτ)
+# 	end
+# 	actions = argmax(Q, dims=2)
+# 	println("Computing T_pol...")
+# 	colvals = [T_tot[actions[i][2]][i,:].nzind for i in 1:nS]
+# 	println("Progress: 33%")
+# 	rowvals = [ones(length(T_tot[actions[i][2]][i,:].nzind))*i for i in 1:nS]
+# 	println("Progress: 67%")
+# 	zvals = [T_tot[actions[i][2]][i,:].nzval for i in 1:nS]
+# 	println("Progress: 100%")
+# 	T_pol = sparse(vcat(rowvals...), vcat(colvals...), vcat(zvals...))
+# 	return T_pol
+# end
+
+# function get_T_policy(T, Q)
+# 	n = size(T[1], 1)
+# 	actions = argmax(Q, dims=2)
+# 	colvals = [T[actions[i][2]][i,:].nzind for i in 1:n]
+# 	rowvals = [ones(length(T[actions[i][2]][i,:].nzind))*i for i in 1:n]
+# 	zvals = [T[actions[i][2]][i,:].nzval for i in 1:n]
+# 	T_pol = sparse(vcat(rowvals...), vcat(colvals...), vcat(zvals...))
+# 	return T_pol
+# end
+
+# function get_T_policy(T, Q)
+# 	n = size(T[1], 1)
+# 	actions = argmax(Q, dims=2)
+# 	T_pol = [T[actions[i][2]][i,:] for i in 1:n]
+# 	return T_pol
+# end
+
+# function get_T_policy(T, Q)
+# 	n = size(T[1], 1)
+# 	T_pol = spzeros(n, n)
+# 	actions = argmax(Q, dims=2)
+# 	for i = 1:n
+# 		T_pol[i,:] = T[actions[i][2]][i,:]
+# 	end
+# 	return T_pol
+# end
