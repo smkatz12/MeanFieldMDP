@@ -1,5 +1,5 @@
 # Define the general mdp
-struct vMDP
+mutable struct vMDP
 	grid::RectangleGrid
 	nS::Int64
 	nA::Int64
@@ -133,7 +133,7 @@ function reward(mdp::vMDP, s_ind::Int64, τ_ind::Int64, a::Int64)
 
 	r = 0
 	# Penalize nmac
-	abs(h) < 100 && τ ≤ 1 ? r -= 1 : nothing
+	abs(h) < 175 && τ ≤ 1 ? r -= 1 : nothing
 	# Penalize alerting
 	a != COC ? r -= 0.01 : nothing
 

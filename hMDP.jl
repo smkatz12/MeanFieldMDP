@@ -1,5 +1,5 @@
 # Define the general mdp
-struct hMDP
+mutable struct hMDP
 	grid::RectangleGrid
 	nS::Int64
 	nA::Int64
@@ -74,6 +74,7 @@ function transition(mdp::hMDP, s_ind::Int64, a::Int64)
 			end
 			states[startind:startind+7] = s
 			probs[startind:startind+7] = ownProbs[i]*intProbs[j] .* p
+			startind+=8
 		end
 	end
 
@@ -138,12 +139,13 @@ function reward(mdp::hMDP, s_ind::Int64, τ_ind::Int64, a::Int64)
 	# Penalize nmac
 	r ≤ 500.0 && τ < 1 ? reward -= 1 : nothing
 	# Penalize closeness
-	r > 500.0 ? reward -= 0.5exp(-(r-500.0)/500.0) : nothing
+	r > 500.0 ? reward -= exp(-(r-500.0)/500.0) : nothing
 	# Penalize alerting or not alerting
 	if a != COC
 		reward -= 0.01
 	else
-		reward -= 0.03exp(-dCPA/500.0)*exp(-tCPA/10.0)
+		nothing
+		#reward -= 0.03exp(-dCPA/500.0)*exp(-tCPA/10.0)
 	end
 
 	return reward
