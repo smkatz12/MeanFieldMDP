@@ -34,6 +34,62 @@ function vanilla_VI(mdp; tol=0.001, max_iter=2000, print_every=1, init_Q=[])
 	return Q
 end
 
+function mfVI(vmdp, hmdp, s_τv, s_τh; tol=0.001, max_iter=2000, print_every=1, init_Qv=[], init_Qh=[])
+	nSv, nAv = vmdp.nS, vmdp.nA
+	γv = vmdp.γ
+	println("building matrices...")
+	Tv, Rv = build_matrices(vmdp)
+	println("Done!")
+	Qv = length(init_Qv) > 0 ? init_Qv : zeros(nSv, nAv)
+	Qv_rc = Dict()
+	Uv = maximum(Qv, dims=2)
+
+	nSh, nAh = hmdp.nS, hmdp.nA
+	γh = hmdp.γ
+	println("building matrices...")
+	Th, Rh = build_matrices(hmdp)
+	println("Done!")
+	Qh = length(init_Qh) > 0 ? init_Qh : zeros(nSh, nAh)
+	Qh_rc = Dict()
+	Uh = maximum(Qh, dims=2)
+
+	for i = 1:max_iter
+		Qv_prev = copy(Qv)
+		Qh_prev = copy(Qh)
+		for a in 1:nAv
+			Qv_rc[a] = remotecall(bellman_update, mod(a, nprocs()-1) + 2, vmdp, Rv[:,a], Tv[a], Uv)
+		end
+		for a in 1:nAv
+			Qv[:,a] = fetch(Qv_rc[a])
+		end
+		for a in 1:nAh
+			Qh_rc[a] = remotecall(bellman_update, mod(a, nprocs()-1) + 2, hmdp, Rh[:,a], Th[a], Uh)
+		end
+		for a in 1:nAh
+			Qh[:,a] = fetch(Qh_rc[a])
+		end
+
+		resid = max(maximum(abs.(Qv .- Qv_prev)), maximum(abs.(Qh .- Qh_prev)))
+		println("iter: $i, resid: $resid")
+		if resid < tol
+			break
+		end
+		Uv = maximum(Qv, dims=2)
+		Uh = maximum(Qh, dims=2)
+
+		if mod(i, 2) == 0
+			println("Updating horizontal...")
+			hmdp.T_τ = update_T_τ!(hmdp, vmdp, Tv, s_τv, Qv)
+			GC.gc()
+			println("Updating vertical...")
+			vmdp.T_τ = update_T_τ!(vmdp, hmdp, Th, s_τh, Qh)
+			GC.gc()
+		end
+	end
+
+	return Qv, Qh
+end
+
 """
 ----------------------------------
 Helper functions
@@ -109,36 +165,6 @@ Mean Field Approximation
 ----------------------------------
 """
 
-# function update_T_τ!(hmdp::hMDP, vmdp::vMDP, T, s_τ, Q)
-# 	nS = size(Q, 1)
-# 	nτh = size(vmdp.T_τ, 1)
-# 	nτv = size(hmdp.T_τ, 1)
-# 	nS_sub = convert(Int64, nS/nτh)
-# 	τs = collect(range(0, step=1, length=nτv))
-
-# 	s_τ_all = repeat(s_τ, nτh) #./nτh
-# 	T_τ = zeros(nτv, nτv)
-
-# 	println("Getting policy transition matrix...")
-# 	T_pol = get_T_policy(vmdp, Q)
-# 	println("Done!")
-
-# 	for τ⁰ in τs
-# 		τ⁰ind = τ⁰ + 1
-# 		den = sum(s_τ_all[:, τ⁰ind])
-# 		for τ¹ in τs
-# 			τ¹ind = τ¹ + 1
-
-# 			# Actual computation
-# 			inner_sum = T_pol*s_τ_all[:, τ¹ind]
-# 			outer_sum = sum(s_τ_all[:, τ⁰ind].*inner_sum)
-
-# 			T_τ[τ⁰ind, τ¹ind] = outer_sum/den
-# 		end
-# 	end
-# 	return T_τ
-# end
-
 function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 	nS = size(Q, 1)
 	nτ_states = size(τmdp.T_τ, 1)
@@ -166,6 +192,7 @@ function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 			T_τ[τ⁰ind, τ¹ind] = outer_sum == 0 ? 0 : outer_sum/den
 		end
 	end
+	#T_pol = 0
 	return T_τ
 end
 
@@ -175,9 +202,9 @@ function get_T_policy(mdp, Q)
 	nτ = size(T_τ, 1)
 	nS_sub = convert(Int64, nS/nτ)
 
-	rval = zeros(Int32, mdp.nS*100)
-    cval = zeros(Int32, mdp.nS*100)
-    zval = zeros(Float32, mdp.nS*100)
+	rval = Vector{Int32}() #zeros(Int32, mdp.nS*800)
+    cval = Vector{Int32}() #zeros(Int32, mdp.nS*800)
+    zval = Vector{Float32}() #zeros(Float32, mdp.nS*800)
     index = 1
 
     for i = 1:nS_sub
@@ -186,16 +213,16 @@ function get_T_policy(mdp, Q)
 			inds = findall(T_τ[j,:] .!= 0)
 			for ind in inds
 				for (spi, probi) in zip(sps,probs)
-		            rval[index] = (j-1)*nS_sub + i
-		            cval[index] = (ind-1)*nS_sub + spi
-		            zval[index] = probi*T_τ[j, ind]
-		            index += 1
+		            push!(rval, (j-1)*nS_sub + i) #rval[index] = (j-1)*nS_sub + i
+		            push!(cval, (ind-1)*nS_sub + spi) #cval[index] = (ind-1)*nS_sub + spi
+		            push!(zval, probi*T_τ[j, ind]) #zval[index] = probi*T_τ[j, ind]
+		            #index += 1
 		        end
 		    end
 	    end
     end
 
-    return sparse(rval[1:index-1], cval[1:index-1], zval[1:index-1], nS, nS)
+    return sparse(rval, cval, zval, nS, nS)
 end
 
 """

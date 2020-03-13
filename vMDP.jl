@@ -130,10 +130,15 @@ Rewards
 function reward(mdp::vMDP, s_ind::Int64, τ_ind::Int64, a::Int64)
 	s_grid = ind2x(mdp.grid, s_ind)
 	h, ḣ₀, ḣ₁, τ = s_grid[1], s_grid[2], s_grid[3], hτs[τ_ind]
+	sepTau0 = abs(h + τ * (ḣ₁ - ḣ₀))
 
 	r = 0
 	# Penalize nmac
 	abs(h) < 175 && τ ≤ 1 ? r -= 1 : nothing
+	# Penalize closeness
+	if (sepTau0 ≤ 150) .& (τ < 15)
+        r -= 0.1*(15.0 - τ)/15.0
+    end
 	# Penalize alerting
 	a != COC ? r -= 0.01 : nothing
 

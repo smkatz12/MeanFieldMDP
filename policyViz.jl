@@ -42,8 +42,8 @@ function viz_vertical_policy(Q)
     	nbin = 100,
         xmin = 0.0,
         xmax = 40.0,
-        ymin = -600.0,
-        ymax = 600.0,
+        ymin = -2000.0,
+        ymax = 2000.0,
         ḣ₀ = collect(-100:10:100),
         ḣ₁ = collect(-100:10:100)
 
@@ -91,7 +91,7 @@ function viz_vertical_policy(Q)
                 Plots.Node("RA 2: CL1500 ",0.15,0.790,style="black,anchor=west", axis="axis description cs"),
                 Plots.Node("RA 3: DES1500",0.15,0.665,style="black,anchor=west", axis="axis description cs")
                 ],width="10cm",height="8cm", hideAxis =true, title="KEY"))
-            PGFPlots.save(filename, g2, include_preamble=:false)
+            PGFPlots.save(fileName, g2, include_preamble=:false)
         end
 
         return g
@@ -208,7 +208,7 @@ function viz_horizontal_policy(Q)
                 Plots.Node("RA 3: SR",0.15,0.665,style="black,anchor=west", axis="axis description cs")
                 ],width="10cm",height="8cm", hideAxis =true, title="KEY"))
 
-            PGFPlots.save(filename, g2, include_preamble=:false)
+            PGFPlots.save(fileName, g2, include_preamble=:false)
         end
 
         return g
