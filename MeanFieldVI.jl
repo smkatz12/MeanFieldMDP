@@ -77,12 +77,12 @@ function mfVI(vmdp, hmdp, s_τv, s_τh; tol=0.001, max_iter=2000, print_every=1,
 		Uv = maximum(Qv, dims=2)
 		Uh = maximum(Qh, dims=2)
 
-		if mod(i, 2) == 0
-			println("Updating horizontal...")
-			hmdp.T_τ = update_T_τ!(hmdp, vmdp, Tv, s_τv, Qv)
-			GC.gc()
+		if mod(i, 2) == 0 && i > 75
 			println("Updating vertical...")
-			vmdp.T_τ = update_T_τ!(vmdp, hmdp, Th, s_τh, Qh)
+			update_T_τ!(vmdp, hmdp, Th, s_τh, Qh)
+			GC.gc()
+			println("Updating horizontal...")
+			update_T_τ!(hmdp, vmdp, Tv, s_τv, Qv)
 			GC.gc()
 		end
 	end
@@ -165,6 +165,38 @@ Mean Field Approximation
 ----------------------------------
 """
 
+# function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
+# 	nS = size(Q, 1)
+# 	nτ_states = size(τmdp.T_τ, 1)
+# 	nτ = size(mdp_to_update.T_τ, 1)
+# 	nS_sub = convert(Int64, nS/nτ_states)
+# 	τs = collect(range(0, step=1, length=nτ))
+
+# 	s_τ_all = repeat(s_τ, nτ_states)
+# 	T_τ = zeros(nτ, nτ)
+
+# 	println("Getting policy transition matrix...")
+# 	T_pol = get_T_policy(τmdp, Q)
+# 	println("Done!")
+
+# 	for τ⁰ in τs
+# 		τ⁰ind = τ⁰ + 1
+# 		den = sum(s_τ_all[:, τ⁰ind])
+# 		for τ¹ in τs
+# 			τ¹ind = τ¹ + 1
+
+# 			# Actual computation
+# 			inner_sum = T_pol*s_τ_all[:, τ¹ind]
+# 			outer_sum = sum(s_τ_all[:, τ⁰ind].*inner_sum)
+
+# 			T_τ[τ⁰ind, τ¹ind] = outer_sum == 0 ? 0 : outer_sum/den
+# 		end
+# 	end
+# 	T_pol = 0
+#     mdp_to_update.T_τ = T_τ
+# 	return T_τ
+# end
+
 function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 	nS = size(Q, 1)
 	nτ_states = size(τmdp.T_τ, 1)
@@ -175,24 +207,33 @@ function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 	s_τ_all = repeat(s_τ, nτ_states)
 	T_τ = zeros(nτ, nτ)
 
-	println("Getting policy transition matrix...")
-	T_pol = get_T_policy(τmdp, Q)
-	println("Done!")
-
 	for τ⁰ in τs
-		τ⁰ind = τ⁰ + 1
+		println(τ⁰)
+        τ⁰ind = τ⁰ + 1
 		den = sum(s_τ_all[:, τ⁰ind])
 		for τ¹ in τs
 			τ¹ind = τ¹ + 1
 
 			# Actual computation
-			inner_sum = T_pol*s_τ_all[:, τ¹ind]
-			outer_sum = sum(s_τ_all[:, τ⁰ind].*inner_sum)
+            outer_sum = 0.0
+            for s0 in 1:5000 #nS
+                if s_τ_all[s0, τ⁰ind] != 0.0
+                    a = argmax(Q[s0,:])
+                    inner_sum = 0.0
+                    for s1 in 1:5000 #nS
+                        if s_τ_all[s1, τ¹ind] != 0.0
+                            inner_sum += T[a][mod(s0, nS_sub), mod(s1, nS_sub)]*s_τ_all[s1, τ¹ind]
+                        end
+                    end
+                    outer_sum += s_τ_all[s0, τ⁰ind]*inner_sum
+                end
+            end
 
-			T_τ[τ⁰ind, τ¹ind] = outer_sum == 0 ? 0 : outer_sum/den
+			T_τ[τ⁰ind, τ¹ind] = outer_sum == 0.0 ? 0.0 : outer_sum/den
 		end
 	end
-	#T_pol = 0
+    
+    mdp_to_update.T_τ = T_τ
 	return T_τ
 end
 
@@ -202,27 +243,38 @@ function get_T_policy(mdp, Q)
 	nτ = size(T_τ, 1)
 	nS_sub = convert(Int64, nS/nτ)
 
-	rval = Vector{Int32}() #zeros(Int32, mdp.nS*800)
-    cval = Vector{Int32}() #zeros(Int32, mdp.nS*800)
-    zval = Vector{Float32}() #zeros(Float32, mdp.nS*800)
+	rval = zeros(Int32, mdp.nS*72*10) #Vector{Int32}() #zeros(Int32, mdp.nS*800)
+    cval = zeros(Int32, mdp.nS*72*10) #Vector{Int32}() #zeros(Int32, mdp.nS*800)
+    zval = zeros(Float32, mdp.nS*72*10) #Vector{Float32}() #zeros(Float32, mdp.nS*800)
     index = 1
 
     for i = 1:nS_sub
 		for j = 1:nτ
+            # Keep dictionary of all the indices (this is about to get messy)
+            index_dict = Dict()
 			sps, probs = transition(mdp, i, argmax(Q[(j-1)*nS_sub + i, :]))
 			inds = findall(T_τ[j,:] .!= 0)
+            if length(sps) > 72
+                println("there is an issue!")
+            end
 			for ind in inds
 				for (spi, probi) in zip(sps,probs)
-		            push!(rval, (j-1)*nS_sub + i) #rval[index] = (j-1)*nS_sub + i
-		            push!(cval, (ind-1)*nS_sub + spi) #cval[index] = (ind-1)*nS_sub + spi
-		            push!(zval, probi*T_τ[j, ind]) #zval[index] = probi*T_τ[j, ind]
-		            #index += 1
+                    c = (ind-1)*nS_sub + spi
+                    if haskey(index_dict, c)
+                        zval[index_dict[c]] += probi*T_τ[j, ind]
+                    else
+                        rval[index] = (j-1)*nS_sub + i #push!(rval, (j-1)*nS_sub + i)
+                        cval[index] = c #push!(cval, (ind-1)*nS_sub + spi)
+                        index_dict[c] = index
+                        zval[index] = probi*T_τ[j, ind] #push!(zval, probi*T_τ[j, ind])
+                        index += 1
+                    end
 		        end
 		    end
 	    end
     end
 
-    return sparse(rval, cval, zval, nS, nS)
+    return sparse(rval[1:index-1], cval[1:index-1], zval[1:index-1], nS, nS)
 end
 
 """
@@ -255,12 +307,12 @@ end
 
 function vertical_τ(mdp::vMDP, s_ind)
 	s_grid = ind2x(mdp.grid, s_ind)
-	h, ḣ₀, ḣ₁ = s_grid[1], s_grid[2], s_grid[3]
+	h, ḣ₀, ḣ₁ = s_grid[1], s_grid[2], s_grid[3]
 	τ = 0
-	if ḣ₀ - ḣ₁ == 0
+	if ḣ₀ - ḣ₁ == 0
 		τ = h == 0 ? 0 : -1
 	else
-		τ = h/(ḣ₀ - ḣ₁)
+		τ = h/(ḣ₀ - ḣ₁)
 	end
 	return τ
 end
@@ -293,14 +345,14 @@ function horizontal_τ(mdp::hMDP, s_ind)
 	v = mdp.vh
 
 	x₀ = 0.0; y₀ = 0.0; x₁ = r*cos(θ); y₁ = r*sin(θ)
-	ẋ₀ = v; ẏ₀ = 0.0; ẋ₁ = v*cos(ψ); ẏ₁ = v*sin(ψ)
-	x₀ += ẋ₀; y₀ += ẏ₀; x₁ += ẋ₁; y₁ += ẏ₁
+	ẋ₀ = v; ẏ₀ = 0.0; ẋ₁ = v*cos(ψ); ẏ₁ = v*sin(ψ)
+	x₀ += ẋ₀; y₀ += ẏ₀; x₁ += ẋ₁; y₁ += ẏ₁
 
 	x₁next = x₁ - x₀; y₁next = y₁ - y₀
 	rnext = √(x₁next^2 + y₁next^2)
 
-	ṙ = r - rnext
-	τ = ṙ == 0 ? -1.0 : r/ṙ
+	ṙ = r - rnext
+	τ = ṙ == 0 ? -1.0 : r/ṙ
 	if r == 0
 		τ = 0.0
 	end
