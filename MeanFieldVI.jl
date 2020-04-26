@@ -77,7 +77,7 @@ function mfVI(vmdp, hmdp, s_τv, s_τh; tol=0.001, max_iter=2000, print_every=1,
 		Uv = maximum(Qv, dims=2)
 		Uh = maximum(Qh, dims=2)
 
-		if mod(i, 2) == 0 && i > 75
+		if mod(i, 2) == 0 && i > 50
 			println("Updating vertical...")
 			update_T_τ!(vmdp, hmdp, Th, s_τh, Qh)
 			GC.gc()
@@ -178,17 +178,18 @@ function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 	for i = 1:nτ_states
 		# Get the policy transition matrix
 		actions = argmax(Q[(i-1)*nS_sub+1:i*nS_sub, :], dims=2)
-		println("$i: getting T_pol")
+		mod(i,15) == 0 ? println("$i: getting T_pol") : nothing
 		T_pol = get_T_policy(T, Q)
-		println("Done!")
 		# Get the partial sums over s1 for all of them
 		partial_over_s1 = T_pol*s_τ # nS_sub x nτ
-		partial_over_s0 = s_τ'*partial_over_s1
+		partial_over_s0 = s_τ'*partial_over_s1 # nτ x nτ
 		T_τ .+= partial_over_s0
 	end
 
-	den = sum(s_τ_all, dims=1)
-	T_τ ./= repeat(den, nτ)
+	# Normalize
+	for i = 1:nτ
+		T_τ[i,:] = T_τ[i,:]/sum(T_τ[i,:])
+	end
 
     mdp_to_update.T_τ = T_τ
 	return T_τ
