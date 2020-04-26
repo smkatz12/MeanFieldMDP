@@ -177,9 +177,9 @@ function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 
 	for i = 1:nτ_states
 		# Get the policy transition matrix
-		actions = argmax(Q, dims=2)
+		actions = argmax(Q[(i-1)*nS_sub+1:i*nS_sub, :], dims=2)
 		println("$i: getting T_pol")
-		T_pol = [T[actions[i][2]][i,:] for i in 1:n]
+		T_pol = [T[actions[j][2]][j,:] for j in 1:nS_sub]
 		println("Done!")
 		# Get the partial sums over s1 for all of them
 		println(size(T_pol))
