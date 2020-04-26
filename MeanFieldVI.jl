@@ -182,6 +182,8 @@ function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 		T_pol = [T[actions[i][2]][i,:] for i in 1:n]
 		println("Done!")
 		# Get the partial sums over s1 for all of them
+		println(size(T_pol))
+		println(size(s_τ))
 		partial_over_s1 = T_pol*s_τ # nS_sub x nτ
 		partial_over_s0 = s_τ'*partial_over_s1
 		T_τ .+= partial_over_s0
