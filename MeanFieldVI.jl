@@ -165,6 +165,35 @@ Mean Field Approximation
 ----------------------------------
 """
 
+function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
+	nS = size(Q, 1)
+	nτ_states = size(τmdp.T_τ, 1)
+	nτ = size(mdp_to_update.T_τ, 1)
+	nS_sub = convert(Int64, nS/nτ_states)
+	τs = collect(range(0, step=1, length=nτ))
+
+	s_τ_all = repeat(s_τ, nτ_states)
+	T_τ = zeros(nτ, nτ)
+
+	for i = 1:nτ_states
+		# Get the policy transition matrix
+		actions = argmax(Q, dims=2)
+		println("$i: getting T_pol")
+		T_pol = [T[actions[i][2]][i,:] for i in 1:n]
+		println("Done!")
+		# Get the partial sums over s1 for all of them
+		partial_over_s1 = T_pol*s_τ # nS_sub x nτ
+		partial_over_s0 = s_τ'*partial_over_s1
+		T_τ .+= partial_over_s0
+	end
+
+	den = sum(s_τ_all, dims=1)
+	T_τ ./= repeat(den, nτ)
+
+    mdp_to_update.T_τ = T_τ
+	return T_τ
+end
+
 # function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 # 	nS = size(Q, 1)
 # 	nτ_states = size(τmdp.T_τ, 1)
@@ -197,45 +226,100 @@ Mean Field Approximation
 # 	return T_τ
 # end
 
-function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
-	nS = size(Q, 1)
-	nτ_states = size(τmdp.T_τ, 1)
-	nτ = size(mdp_to_update.T_τ, 1)
-	nS_sub = convert(Int64, nS/nτ_states)
-	τs = collect(range(0, step=1, length=nτ))
+# function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
+# 	nS = size(Q, 1)
+# 	nτ_states = size(τmdp.T_τ, 1)
+# 	nτ = size(mdp_to_update.T_τ, 1)
+# 	nS_sub = convert(Int64, nS/nτ_states)
+# 	τs = collect(range(0, step=1, length=nτ))
 
-	s_τ_all = repeat(s_τ, nτ_states)
-	T_τ = zeros(nτ, nτ)
+# 	s_τ_all = repeat(s_τ, nτ_states)
+# 	T_τ = zeros(nτ, nτ)
 
-	for τ⁰ in τs
-		println(τ⁰)
-        τ⁰ind = τ⁰ + 1
-		den = sum(s_τ_all[:, τ⁰ind])
-		for τ¹ in τs
-			τ¹ind = τ¹ + 1
+# 	for τ⁰ in τs
+# 		println(τ⁰)
+#         τ⁰ind = τ⁰ + 1
+# 		den = sum(s_τ_all[:, τ⁰ind])
+# 		for τ¹ in τs
+# 			τ¹ind = τ¹ + 1
 
-			# Actual computation
-            outer_sum = 0.0
-            for s0 in 1:5000 #nS
-                if s_τ_all[s0, τ⁰ind] != 0.0
-                    a = argmax(Q[s0,:])
-                    inner_sum = 0.0
-                    for s1 in 1:5000 #nS
-                        if s_τ_all[s1, τ¹ind] != 0.0
-                            inner_sum += T[a][mod(s0, nS_sub), mod(s1, nS_sub)]*s_τ_all[s1, τ¹ind]
-                        end
-                    end
-                    outer_sum += s_τ_all[s0, τ⁰ind]*inner_sum
-                end
-            end
+# 			# Actual computation
+#             outer_sum = 0.0
+#             for s0 in 1:5000 #nS
+#                 if s_τ_all[s0, τ⁰ind] != 0.0
+#                     a = argmax(Q[s0,:])
+#                     Ta = T[a]
+#                     inner_sum = 0.0
+#                     for s1 in 1:5000 #nS
+#                         if s_τ_all[s1, τ¹ind] != 0.0
+#                             @inbounds inner_sum += Ta[mod(s0, nS_sub), mod(s1, nS_sub)]*s_τ_all[s1, τ¹ind]
+#                         end
+#                     end
+#                     outer_sum += s_τ_all[s0, τ⁰ind]*inner_sum
+#                 end
+#             end
 
-			T_τ[τ⁰ind, τ¹ind] = outer_sum == 0.0 ? 0.0 : outer_sum/den
-		end
-	end
+# 			T_τ[τ⁰ind, τ¹ind] = outer_sum == 0.0 ? 0.0 : outer_sum/den
+# 		end
+# 	end
     
-    mdp_to_update.T_τ = T_τ
-	return T_τ
-end
+#     mdp_to_update.T_τ = T_τ
+# 	return T_τ
+# end
+
+# function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
+# 	nS = size(Q, 1)
+# 	nτ_states = size(τmdp.T_τ, 1)
+# 	nτ = size(mdp_to_update.T_τ, 1)
+# 	nS_sub = convert(Int64, nS/nτ_states)
+# 	τs = collect(range(0, step=1, length=nτ))
+
+# 	s_τ_all = repeat(s_τ, nτ_states)
+# 	T_τ = zeros(nτ, nτ)
+
+# 	actions = argmax(Q, dims=2)
+
+# 	# Go through the τs BUT THESE ARE PART OF STATES
+# 	for i = 1:nτ_states
+# 		inner_sum = zeros(nS)
+# 		for j = 1:nτ_states
+# 			T_pol = [T[actions[k][2]][k,:] for k in (i-1)*nS_sub+1:(i-1)*nS_sub]
+# 			# I don't knowwwwwww
+# 		end
+# 	end
+
+
+
+
+# 	for τ⁰ in τs
+# 		println(τ⁰)
+#         τ⁰ind = τ⁰ + 1
+# 		den = sum(s_τ_all[:, τ⁰ind])
+# 		for τ¹ in τs
+# 			τ¹ind = τ¹ + 1
+
+# 			# Actual computation
+#             outer_sum = 0.0
+#             for s0 in 1:5000 #nS
+#                 if s_τ_all[s0, τ⁰ind] != 0.0
+#                     a = argmax(Q[s0,:])
+#                     inner_sum = 0.0
+#                     for s1 in 1:5000 #nS
+#                         if s_τ_all[s1, τ¹ind] != 0.0
+#                             inner_sum += T[a][mod(s0, nS_sub), mod(s1, nS_sub)]*s_τ_all[s1, τ¹ind]
+#                         end
+#                     end
+#                     outer_sum += s_τ_all[s0, τ⁰ind]*inner_sum
+#                 end
+#             end
+
+# 			T_τ[τ⁰ind, τ¹ind] = outer_sum == 0.0 ? 0.0 : outer_sum/den
+# 		end
+# 	end
+    
+#     mdp_to_update.T_τ = T_τ
+# 	return T_τ
+# end
 
 function get_T_policy(mdp, Q)
 	nS, nA = mdp.nS, mdp.nA
