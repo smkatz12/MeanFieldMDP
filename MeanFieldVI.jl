@@ -333,45 +333,45 @@ end
 # 	return T_τ
 # end
 
-function get_T_policy(mdp, Q)
-	nS, nA = mdp.nS, mdp.nA
-	T_τ = mdp.T_τ
-	nτ = size(T_τ, 1)
-	nS_sub = convert(Int64, nS/nτ)
+# function get_T_policy(mdp, Q)
+# 	nS, nA = mdp.nS, mdp.nA
+# 	T_τ = mdp.T_τ
+# 	nτ = size(T_τ, 1)
+# 	nS_sub = convert(Int64, nS/nτ)
 
-	rval = zeros(Int32, mdp.nS*72*10) #Vector{Int32}() #zeros(Int32, mdp.nS*800)
-    cval = zeros(Int32, mdp.nS*72*10) #Vector{Int32}() #zeros(Int32, mdp.nS*800)
-    zval = zeros(Float32, mdp.nS*72*10) #Vector{Float32}() #zeros(Float32, mdp.nS*800)
-    index = 1
+# 	rval = zeros(Int32, mdp.nS*72*10) #Vector{Int32}() #zeros(Int32, mdp.nS*800)
+#     cval = zeros(Int32, mdp.nS*72*10) #Vector{Int32}() #zeros(Int32, mdp.nS*800)
+#     zval = zeros(Float32, mdp.nS*72*10) #Vector{Float32}() #zeros(Float32, mdp.nS*800)
+#     index = 1
 
-    for i = 1:nS_sub
-		for j = 1:nτ
-            # Keep dictionary of all the indices (this is about to get messy)
-            index_dict = Dict()
-			sps, probs = transition(mdp, i, argmax(Q[(j-1)*nS_sub + i, :]))
-			inds = findall(T_τ[j,:] .!= 0)
-            if length(sps) > 72
-                println("there is an issue!")
-            end
-			for ind in inds
-				for (spi, probi) in zip(sps,probs)
-                    c = (ind-1)*nS_sub + spi
-                    if haskey(index_dict, c)
-                        zval[index_dict[c]] += probi*T_τ[j, ind]
-                    else
-                        rval[index] = (j-1)*nS_sub + i #push!(rval, (j-1)*nS_sub + i)
-                        cval[index] = c #push!(cval, (ind-1)*nS_sub + spi)
-                        index_dict[c] = index
-                        zval[index] = probi*T_τ[j, ind] #push!(zval, probi*T_τ[j, ind])
-                        index += 1
-                    end
-		        end
-		    end
-	    end
-    end
+#     for i = 1:nS_sub
+# 		for j = 1:nτ
+#             # Keep dictionary of all the indices (this is about to get messy)
+#             index_dict = Dict()
+# 			sps, probs = transition(mdp, i, argmax(Q[(j-1)*nS_sub + i, :]))
+# 			inds = findall(T_τ[j,:] .!= 0)
+#             if length(sps) > 72
+#                 println("there is an issue!")
+#             end
+# 			for ind in inds
+# 				for (spi, probi) in zip(sps,probs)
+#                     c = (ind-1)*nS_sub + spi
+#                     if haskey(index_dict, c)
+#                         zval[index_dict[c]] += probi*T_τ[j, ind]
+#                     else
+#                         rval[index] = (j-1)*nS_sub + i #push!(rval, (j-1)*nS_sub + i)
+#                         cval[index] = c #push!(cval, (ind-1)*nS_sub + spi)
+#                         index_dict[c] = index
+#                         zval[index] = probi*T_τ[j, ind] #push!(zval, probi*T_τ[j, ind])
+#                         index += 1
+#                     end
+# 		        end
+# 		    end
+# 	    end
+#     end
 
-    return sparse(rval[1:index-1], cval[1:index-1], zval[1:index-1], nS, nS)
-end
+#     return sparse(rval[1:index-1], cval[1:index-1], zval[1:index-1], nS, nS)
+# end
 
 """
 ----------------------------------
