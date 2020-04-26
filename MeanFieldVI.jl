@@ -182,8 +182,6 @@ function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 		T_pol = get_T_policy(T, Q)
 		println("Done!")
 		# Get the partial sums over s1 for all of them
-		println(size(T_pol))
-		println(size(s_τ))
 		partial_over_s1 = T_pol*s_τ # nS_sub x nτ
 		partial_over_s0 = s_τ'*partial_over_s1
 		T_τ .+= partial_over_s0
@@ -196,13 +194,23 @@ function update_T_τ!(mdp_to_update, τmdp, T, s_τ, Q)
 	return T_τ
 end
 
+# function get_T_policy(T, Q)
+# 	n = size(T[1], 1)
+# 	T_pol = spzeros(n, n)
+# 	actions = argmax(Q, dims=2)
+# 	for i = 1:n
+# 		T_pol[i,:] = T[actions[i][2]][i,:]
+# 	end
+# 	return T_pol
+# end
+
 function get_T_policy(T, Q)
 	n = size(T[1], 1)
-	T_pol = spzeros(n, n)
 	actions = argmax(Q, dims=2)
-	for i = 1:n
-		T_pol[i,:] = T[actions[i][2]][i,:]
-	end
+	colvals = [T[actions[i][2]][i,:].nzind for i in 1:n]
+	rowvals = [ones(length(T[actions[i][2]][i,:].nzind))*i for i in 1:n]
+	zvals = [T[actions[i][2]][i,:].nzval for i in 1:n]
+	T_pol = sparse(vcat(rowvals...), vcat(colvals...), vcat(zvals...))
 	return T_pol
 end
 
